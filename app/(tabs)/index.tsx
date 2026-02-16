@@ -1,98 +1,178 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { View, Text, Button, StyleSheet, FlatList, Alert, TouchableOpacity } from 'react-native';
 import { Link } from 'expo-router';
+import { useState } from 'react';
+import StudentCard from '../../components/StudentCard';
+import AddStudentForm from '../../components/AddStudentForm';
+import EditStudentForm from '../../components/EditStudentForm';
 
-export default function HomeScreen() {
+type Student = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  avatar?: string | { emoji: string; color: string };  // Nouveau champ
+};
+
+export default function Home() {
+  const [students, setStudents] = useState<Student[]>([
+    { id: 1, name: 'Alice Martin', email: 'alice@campus.com', role: 'Étudiant' },
+    { id: 2, name: 'Bob Dupont', email: 'bob@campus.com', role: 'Étudiant' },
+    { id: 3, name: 'Charlie Lambert', email: 'charlie@campus.com', role: 'Étudiant' },
+    { id: 4, name: 'Diana Prince', email: 'diana@campus.com', role: 'Étudiant' },
+  ]);
+
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  const handleDelete = (id: number) => {
+    Alert.alert(
+      'Confirmation',
+      'Voulez-vous vraiment supprimer cet etudiant ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            setStudents(prevStudents => 
+              prevStudents.filter(student => student.id !== id)
+            );
+          }
+        },
+      ]
+    );
+  };
+
+  const handleEdit = (id: number) => {
+    const student = students.find(s => s.id === id);
+    if (student) {
+      setSelectedStudent(student);
+      setEditModalVisible(true);
+    }
+  };
+
+  const handleSaveEdit = (id: number, updatedData: { name: string; email: string }) => {
+    setStudents(prevStudents =>
+      prevStudents.map(student =>
+        student.id === id
+          ? { ...student, ...updatedData }
+          : student
+      )
+    );
+  };
+
+  const handleAdd = (newStudent: { name: string; email: string }) => {
+    const newId = Math.max(...students.map(s => s.id), 0) + 1;
+    setStudents([...students, { 
+      id: newId, 
+      ...newStudent, 
+      role: 'Étudiant' 
+    }]);
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>CampusApp</Text>
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={() => setAddModalVisible(true)}
+        >
+          <Text style={styles.addButtonText}>+ Ajouter</Text>
+        </TouchableOpacity>
+      </View>
+      
+      <Link href="/about" asChild>
+        <Button title="À propos" />
+      </Link>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <Text style={styles.subtitle}>Liste des étudiants :</Text>
+      <Text style={styles.hint}>← Glissez pour voir les options (Modifier/Supprimer)</Text>
+      
+      <FlatList
+        data={students}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={({ item }) => (
+          <StudentCard
+            id={item.id}
+            name={item.name}
+            email={item.email}
+            role={item.role}
+            onDelete={handleDelete}
+            onEdit={handleEdit}
+          />
+        )}
+        style={styles.list}
+        ListEmptyComponent={
+          <Text style={styles.emptyList}>Aucun étudiant</Text>
+        }
+      />
+
+      <AddStudentForm
+        visible={addModalVisible}
+        onClose={() => setAddModalVisible(false)}
+        onAdd={handleAdd}
+      />
+
+      <EditStudentForm
+        visible={editModalVisible}
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedStudent(null);
+        }}
+        onEdit={handleSaveEdit}
+        student={selectedStudent}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    padding: 20,
+  },
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    marginBottom: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#007AFF',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  addButton: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  subtitle: {
+    fontSize: 18,
+    marginTop: 20,
+    marginBottom: 5,
+  },
+  hint: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  list: {
+    flex: 1,
+  },
+  emptyList: {
+    textAlign: 'center',
+    marginTop: 50,
+    fontSize: 16,
+    color: '#999',
   },
 });
