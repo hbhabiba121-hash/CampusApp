@@ -1,43 +1,57 @@
-import { View, Text, Button, StyleSheet, FlatList, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, Button, StyleSheet, FlatList, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
-import { useState } from 'react';
-import StudentCard from '../../components/StudentCard';
-import AddStudentForm from '../../components/AddStudentForm';
-import EditStudentForm from '../../components/EditStudentForm';
-
-type Student = {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  avatar?: string | { emoji: string; color: string };  // Nouveau champ
-};
+import { useState, useEffect } from 'react';
+import StudentCard from '../../components/StudentCard';  // Chemin corrigé
+import AddStudentForm from '../../components/AddStudentForm';  // Chemin corrigé
+import EditStudentForm from '../../components/EditStudentForm';  // Chemin corrigé
+import database, { Student } from '../../services/database';  // Chemin corrigé
 
 export default function Home() {
-  const [students, setStudents] = useState<Student[]>([
-    { id: 1, name: 'Alice Martin', email: 'alice@campus.com', role: 'Étudiant' },
-    { id: 2, name: 'Bob Dupont', email: 'bob@campus.com', role: 'Étudiant' },
-    { id: 3, name: 'Charlie Lambert', email: 'charlie@campus.com', role: 'Étudiant' },
-    { id: 4, name: 'Diana Prince', email: 'diana@campus.com', role: 'Étudiant' },
-  ]);
-
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
+  // Charger les étudiants au démarrage
+  useEffect(() => {
+    loadStudents();
+  }, []);
+
+  const loadStudents = async () => {
+    try {
+      setLoading(true);
+      await database.init();
+      const loadedStudents = await database.getAllStudents();
+      setStudents(loadedStudents);
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de charger les étudiants');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDelete = (id: number) => {
     Alert.alert(
       'Confirmation',
-      'Voulez-vous vraiment supprimer cet etudiant ?',
+      'Voulez-vous vraiment supprimer cet étudiant ?',
       [
         { text: 'Annuler', style: 'cancel' },
         {
           text: 'Supprimer',
           style: 'destructive',
-          onPress: () => {
-            setStudents(prevStudents => 
-              prevStudents.filter(student => student.id !== id)
-            );
+          onPress: async () => {
+            try {
+              const success = await database.deleteStudent(id);
+              if (success) {
+                setStudents(prevStudents => 
+                  prevStudents.filter(student => student.id !== id)
+                );
+                Alert.alert('Succès', 'Étudiant supprimé avec succès');
+              }
+            } catch (error) {
+              Alert.alert('Erreur', 'Une erreur est survenue');
+            }
           }
         },
       ]
@@ -52,24 +66,52 @@ export default function Home() {
     }
   };
 
-  const handleSaveEdit = (id: number, updatedData: { name: string; email: string }) => {
-    setStudents(prevStudents =>
-      prevStudents.map(student =>
-        student.id === id
-          ? { ...student, ...updatedData }
-          : student
-      )
-    );
+  const handleSaveEdit = async (id: number, updatedData: { name: string; email: string }) => {
+    try {
+      const success = await database.updateStudent(id, updatedData);
+      if (success) {
+        setStudents(prevStudents =>
+          prevStudents.map(student =>
+            student.id === id
+              ? { ...student, ...updatedData }
+              : student
+          )
+        );
+        Alert.alert('Succès', 'Étudiant modifié avec succès');
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Une erreur est survenue');
+    }
   };
 
-  const handleAdd = (newStudent: { name: string; email: string }) => {
-    const newId = Math.max(...students.map(s => s.id), 0) + 1;
-    setStudents([...students, { 
-      id: newId, 
-      ...newStudent, 
-      role: 'Étudiant' 
-    }]);
+  const handleAdd = async (newStudent: { name: string; email: string }) => {
+    try {
+      const added = await database.addStudent({
+        ...newStudent,
+        role: 'Étudiant'
+      });
+      
+      if (added) {
+        setStudents(prevStudents => [...prevStudents, added]);
+        Alert.alert('Succès', 'Étudiant ajouté avec succès');
+      }
+    } catch (error: any) {
+      if (error.message?.includes('UNIQUE constraint failed')) {
+        Alert.alert('Erreur', 'Cet email existe déjà');
+      } else {
+        Alert.alert('Erreur', 'Une erreur est survenue');
+      }
+    }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Chargement des étudiants...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -105,7 +147,15 @@ export default function Home() {
         )}
         style={styles.list}
         ListEmptyComponent={
-          <Text style={styles.emptyList}>Aucun étudiant</Text>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyList}>Aucun étudiant</Text>
+            <TouchableOpacity 
+              style={styles.emptyAddButton}
+              onPress={() => setAddModalVisible(true)}
+            >
+              <Text style={styles.emptyAddButtonText}>Ajouter un premier étudiant</Text>
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -132,6 +182,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
@@ -169,10 +229,23 @@ const styles = StyleSheet.create({
   list: {
     flex: 1,
   },
-  emptyList: {
-    textAlign: 'center',
+  emptyContainer: {
+    alignItems: 'center',
     marginTop: 50,
+  },
+  emptyList: {
     fontSize: 16,
     color: '#999',
+    marginBottom: 15,
+  },
+  emptyAddButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  emptyAddButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
 });
